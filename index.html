@@ -634,7 +634,7 @@
           <div class="report-intro__meta">
             <span>📚 11 个算法模块</span>
             <span>☁️ 4 种云端环境</span>
-            <span>⏱️ 建议 32–48 学时</span>
+            <span>⏱️ 建议 39 学时（13 次课 × 3 学时）</span>
             <span class="tag">NVIDIA RAPIDS cuML</span>
           </div>
         </div>
@@ -1200,7 +1200,7 @@ model = xgb.train(params, dtrain, num_boost_round=100)</code></pre>
 
           <h3>4.1 课程总览</h3>
           <p>
-            本课程共 12 次课，总学时 36 学时（18 讲授 + 18 实验），按"基础铺垫 → 核心算法 → 进阶应用 → 综合项目"四个阶段递进。
+            本课程共 13 次课，总学时 39 学时（19.5 讲授 + 19.5 实验），按"基础铺垫 → 核心算法 → 进阶应用 → 综合项目"四个阶段递进。
             每次课均包含知识点讲解、代码示例和动手实验三个环节。
           </p>
 
@@ -1227,7 +1227,8 @@ model = xgb.train(params, dtrain, num_boost_round=100)</code></pre>
                 <tr><th scope="row">9</th><td>聚类算法</td><td>进阶应用</td><td>3</td><td>KMeans, DBSCAN, HDBSCAN</td></tr>
                 <tr><th scope="row">10</th><td>降维与流形学习</td><td>进阶应用</td><td>3</td><td>PCA, t-SNE, UMAP</td></tr>
                 <tr><th scope="row">11</th><td>梯度提升树（XGBoost）</td><td>进阶应用</td><td>3</td><td>XGBoost GPU</td></tr>
-                <tr><th scope="row">12</th><td>综合项目实战与展示</td><td>综合项目</td><td>3</td><td>全流程</td></tr>
+                <tr><th scope="row">12</th><td>超参数调优：网格/随机/贝叶斯搜索</td><td>进阶应用</td><td>3</td><td>cuml.accel, Optuna, GridSearchCV</td></tr>
+                <tr><th scope="row">13</th><td>综合项目实战与展示</td><td>综合项目</td><td>3</td><td>全流程</td></tr>
               </tbody>
             </table>
           </div>
@@ -2774,6 +2775,255 @@ shap.force_plot(
             <div class="lesson-header">
               <div class="lesson-badge">12</div>
               <div class="lesson-title">
+                <h3>超参数调优：网格/随机/贝叶斯搜索</h3>
+                <div class="lesson-meta">3 学时 | 进阶应用 | 知识点 9 个 | 代码示例 3 段 | 实验 1 个</div>
+              </div>
+            </div>
+            <div class="lesson-body">
+              <h4>教学目标</h4>
+              <p>理解超参数调优在机器学习中的重要性，掌握网格搜索、随机搜索和贝叶斯优化三种调参策略，使用 cuml.accel 和 Optuna 实现 GPU 加速调参。</p>
+
+              <h4>知识点</h4>
+              <div class="kp-grid">
+                <div class="kp-item">超参数 vs 模型参数的区别</div>
+                <div class="kp-item">网格搜索：穷举搜索空间策略</div>
+                <div class="kp-item">随机搜索：概率采样的优势</div>
+                <div class="kp-item">贝叶斯优化原理（TPE / 高斯过程）</div>
+                <div class="kp-item">交叉验证与调参的结合</div>
+                <div class="kp-item">cuml.accel 零代码加速原理</div>
+                <div class="kp-item">Optuna 框架与 prune 机制</div>
+                <div class="kp-item">搜索空间设计策略</div>
+                <div class="kp-item">调参效率：CPU vs GPU 对比</div>
+              </div>
+
+              <h4>代码示例 1：cuml.accel + GridSearchCV / RandomizedSearchCV</h4>
+              <pre><code># === 零代码修改：cuml.accel 加速 scikit-learn 超参数搜索 ===
+%load_ext cuml.accel    # 启用 GPU 加速（一行代码）
+
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.datasets import make_classification
+from scipy.stats import randint, loguniform
+import time
+
+# 生成数据
+X, y = make_classification(n_samples=500_000, n_features=50,
+                           n_informative=30, random_state=42)
+
+# 构建 Pipeline
+pipeline = Pipeline([
+    ('scaler', StandardScaler()),
+    ('pca', PCA()),
+    ('clf', KNeighborsClassifier()),
+])
+
+# --- 网格搜索 ---
+param_grid = {
+    'pca__n_components': [10, 30, 50],
+    'clf__n_neighbors': [3, 5, 10, 20],
+    'clf__weights': ['uniform', 'distance'],
+}
+grid_search = GridSearchCV(pipeline, param_grid, cv=5, scoring='accuracy')
+
+t0 = time.time()
+grid_search.fit(X, y)
+t_grid = time.time() - t0
+print(f"GridSearchCV: best={grid_search.best_score_:.4f}, "
+      f"params={grid_search.best_params_}, time={t_grid:.1f}s")
+
+# --- 随机搜索 ---
+param_dist = {
+    'pca__n_components': randint(5, 50),
+    'clf__n_neighbors': randint(1, 50),
+    'clf__weights': ['uniform', 'distance'],
+    'clf__p': [1, 2],
+}
+random_search = RandomizedSearchCV(
+    pipeline, param_dist, n_iter=20, cv=5,
+    scoring='accuracy', random_state=42
+)
+
+t0 = time.time()
+random_search.fit(X, y)
+t_random = time.time() - t0
+print(f"RandomizedSearchCV: best={random_search.best_score_:.4f}, "
+      f"params={random_search.best_params_}, time={t_random:.1f}s")
+
+# 对比：cuml.accel 下 Pipeline 中 StandardScaler/PCA/KNN 自动跑在 GPU 上
+# 无法 GPU 加速的操作自动回退 CPU</code></pre>
+
+              <h4>代码示例 2：Optuna + 原生 cuML 贝叶斯优化</h4>
+              <pre><code># === Optuna 贝叶斯优化 + cuML GPU 训练 ===
+import optuna
+import cudf
+import cupy as cp
+from cuml.ensemble import RandomForestClassifier
+from cuml.model_selection import KFold, train_test_split
+from cuml.metrics import accuracy_score
+import time
+
+# 加载数据到 GPU
+X = cudf.read_csv('features.csv').values
+y = cudf.Series(labels)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+def objective(trial):
+    """Optuna 目标函数：返回交叉验证平均准确率"""
+    # 搜索空间（TPE 贝叶斯采样）
+    n_estimators = trial.suggest_int('n_estimators', 50, 500)
+    max_depth = trial.suggest_int('max_depth', 3, 25)
+    max_features = trial.suggest_float('max_features', 0.5, 1.0)
+    n_bins = trial.suggest_categorical('n_bins', [32, 64, 128])
+
+    model = RandomForestClassifier(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        max_features=max_features,
+        n_bins=n_bins,
+        n_streams=4,
+        random_state=42
+    )
+
+    # 5 折交叉验证
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+    scores = []
+    for train_idx, val_idx in kf.split(X_train, y_train):
+        X_tr = X_train.iloc[train_idx]
+        y_tr = y_train.iloc[train_idx]
+        X_va = X_train.iloc[val_idx]
+        y_va = y_train.iloc[val_idx]
+        model.fit(X_tr, y_tr)
+        y_pred = model.predict(X_va)
+        scores.append(float(accuracy_score(y_va, y_pred)))
+
+    return sum(scores) / len(scores)
+
+# 创建贝叶斯优化研究
+study = optuna.create_study(
+    direction='maximize',
+    sampler=optuna.samplers.TPESampler(seed=42),  # TPE 贝叶斯采样
+    pruner=optuna.pruners.MedianPruner()           # 中位数剪枝
+)
+
+t0 = time.time()
+study.optimize(objective, n_trials=30, timeout=600)
+t_bayes = time.time() - t0
+
+print(f"\n贝叶斯优化结果:")
+print(f"  最佳准确率: {study.best_value:.4f}")
+print(f"  最佳参数: {study.best_params}")
+print(f"  耗时: {t_bayes:.1f}s")
+print(f"  试验次数: {len(study.trials)}")
+
+# 可视化调参过程
+# optuna.visualization.plot_optimization_history(study)
+# optuna.visualization.plot_param_importances(study)</code></pre>
+
+              <h4>代码示例 3：三种方法对比实验</h4>
+              <pre><code># === 三种调参方法横向对比 ===
+import time
+import numpy as np
+
+results = {}
+
+# 1. 网格搜索（cuml.accel 加速）
+t0 = time.time()
+gs = GridSearchCV(pipeline, param_grid, cv=5, scoring='accuracy')
+gs.fit(X, y)
+results['GridSearch'] = {
+    'best': gs.best_score_, 'time': time.time() - t0,
+    'n_trials': len(gs.cv_results_['params'])
+}
+
+# 2. 随机搜索（cuml.accel 加速）
+t0 = time.time()
+rs = RandomizedSearchCV(pipeline, param_dist, n_iter=20, cv=5, random_state=42)
+rs.fit(X, y)
+results['RandomSearch'] = {
+    'best': rs.best_score_, 'time': time.time() - t0,
+    'n_trials': 20
+}
+
+# 3. 贝叶斯优化（Optuna + cuML）
+t0 = time.time()
+study_bayes = optuna.create_study(direction='maximize',
+    sampler=optuna.samplers.TPESampler(seed=42))
+study_bayes.optimize(objective, n_trials=20)
+results['BayesOpt'] = {
+    'best': study_bayes.best_value, 'time': time.time() - t0,
+    'n_trials': 20
+}
+
+# 汇总对比
+print(f"{'方法':<15} {'最佳准确率':<12} {'耗时(s)':<10} {'试验数':<8} {'效率(点/秒)':<12}")
+print("-" * 60)
+for name, r in results.items():
+    eff = r['best'] / r['time']
+    print(f"{name:<15} {r['best']:<12.4f} {r['time']:<10.1f} "
+          f"{r['n_trials']:<8} {eff:<12.6f}")
+
+# 分析结论：
+# - GridSearch 穷举，最可靠但最慢
+# - RandomSearch 采样效率高，适合大搜索空间
+# - BayesOpt 自适应，少量试验即可逼近最优</code></pre>
+
+              <div class="experiment-box">
+                <h5>🔬 实验 12：三种调参方法对比——GPU 加速调参实战</h5>
+                <p><strong>实验目标：</strong>使用 GridSearchCV、RandomizedSearchCV 和 Optuna 贝叶斯优化三种方法对随机森林模型调参，对比调参效果和 GPU 加速效果。</p>
+                <div class="dataset-box">
+                  <h5>📦 数据集获取</h5>
+                  <div class="ds-item">
+                    <span class="ds-label">sklearn API</span>
+                    <span class="ds-desc"><code>from sklearn.datasets import make_classification; X, y = make_classification(n_samples=500000, n_features=50, n_informative=30)</code></span>
+                  </div>
+                  <div class="ds-item">
+                    <span class="ds-label">替代数据集</span>
+                    <span class="ds-desc">可使用 Credit Card Fraud（第 4 课已下载）或 MNIST（第 6 课已下载）</span>
+                  </div>
+                  <div class="ds-item">
+                    <span class="ds-label">规模要求</span>
+                    <span class="ds-desc">建议 ≥50 万行以体现 GPU 加速调参优势；小数据集 CPU 即可</span>
+                  </div>
+                </div>
+                <p><strong>实验任务：</strong></p>
+                <ul>
+                  <li>启用 <code>%load_ext cuml.accel</code>，构建 Pipeline（StandardScaler → PCA → 模型）</li>
+                  <li>使用 <code>GridSearchCV</code> 穷举搜索（3×4×2=24 组合 × 5 折）</li>
+                  <li>使用 <code>RandomizedSearchCV</code> 随机搜索（20 次试验 × 5 折）</li>
+                  <li>使用 <code>Optuna + cuML</code> 贝叶斯优化（30 次试验 × 5 折）</li>
+                  <li>记录三种方法的最佳准确率、搜索时间和试验次数</li>
+                  <li>绘制三种方法的搜索收敛曲线（trial vs score）</li>
+                  <li>关闭 <code>cuml.accel</code> 后重跑 GridSearchCV，对比 CPU vs GPU 调参时间</li>
+                  <li>使用 Optuna 的 <code>plot_optimization_history</code> 和 <code>plot_param_importances</code> 可视化</li>
+                </ul>
+                <p><strong>实验提交：</strong>Notebook + 三方法对比表 + 搜索收敛曲线图 + 参数重要性图 + 分析报告</p>
+                <table class="perf-table">
+                  <thead><tr><th>调参方法</th><th>最佳准确率</th><th>搜索时间(s)</th><th>试验数</th><th>GPU 加速比</th><th>收敛速度</th></tr></thead>
+                  <tbody>
+                    <tr><td>GridSearchCV</td><td>____</td><td>____</td><td>24×5</td><td>____x</td><td>低/中/高</td></tr>
+                    <tr><td>RandomizedSearchCV</td><td>____</td><td>____</td><td>20×5</td><td>____x</td><td>低/中/高</td></tr>
+                    <tr><td>Bayesian (Optuna)</td><td>____</td><td>____</td><td>30×5</td><td>____x</td><td>低/中/高</td></tr>
+                  </tbody>
+                </table>
+                <p><strong>进阶思考题：</strong></p>
+                <ul>
+                  <li>为什么在相同试验次数下，贝叶斯优化通常优于随机搜索？</li>
+                  <li>什么情况下网格搜索反而比贝叶斯优化更优？</li>
+                  <li><code>cuml.accel</code> 加速的是搜索过程本身还是 pipeline 中的计算？为什么？</li>
+                  <li>如何设计搜索空间以平衡搜索效率和模型性能？</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== 第13课 ===== -->
+          <div class="lesson">
+            <div class="lesson-header">
+              <div class="lesson-badge">13</div>
+              <div class="lesson-title">
                 <h3>综合项目实战与展示</h3>
                 <div class="lesson-meta">3 学时 | 综合项目 | 知识点 5 个 | 代码示例 1 段 | 实验 1 个</div>
               </div>
@@ -2914,8 +3164,8 @@ shap.summary_plot(shap_values, X_test.to_numpy())</code></pre>
               <tr><th>考核项</th><th>占比</th><th>内容</th><th>对应课次</th></tr>
             </thead>
             <tbody>
-              <tr><th scope="row">平时实验（10 个）</th><td>40%</td><td>每次实验 Notebook + 分析报告</td><td>第 1-11 课</td></tr>
-              <tr><th scope="row">期末项目</th><td>35%</td><td>端到端项目（代码 + 报告 + 展示）</td><td>第 12 课</td></tr>
+              <tr><th scope="row">平时实验（11 个）</th><td>40%</td><td>每次实验 Notebook + 分析报告</td><td>第 1-12 课</td></tr>
+            <tr><th scope="row">期末项目</th><td>35%</td><td>端到端项目（代码 + 报告 + 展示）</td><td>第 13 课</td></tr>
               <tr><th scope="row">课堂参与</th><td>10%</td><td>出勤 + 课堂讨论 + Live Coding 参与</td><td>全程</td></tr>
               <tr><th scope="row">期末测验</th><td>15%</td><td>理论知识 + 代码分析笔试</td><td>期末</td></tr>
             </tbody>
